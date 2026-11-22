@@ -163,6 +163,7 @@
   </main>
   </div>
 
+  <script src="storage.js"></script>
   <script>
     const list = document.getElementById("invoice-list");
     const totalEl = document.getElementById("total-owed");
@@ -177,9 +178,7 @@
     async function fetchInvoices() {
       setStatus("Loading invoices…", "info");
       try {
-        const res = await fetch("/api/invoices");
-        if (!res.ok) throw new Error("Server returned " + res.status);
-        render(await res.json());
+        render(invoiceStore.load());
         setStatus("");
       } catch (err) {
         render([]);
@@ -237,16 +236,7 @@
       button.disabled = true;
       setStatus("Saving…", "info");
       try {
-        const res = await fetch("/api/invoices", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            client: form.client.value,
-            amount: form.amount.value,
-          }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || "Server returned " + res.status);
+        invoiceStore.add(form.client.value, form.amount.value);
         form.reset();
         setStatus("Invoice added.", "");
         await fetchInvoices();
@@ -260,8 +250,7 @@
     async function togglePaid(id) {
       setStatus("Updating…", "info");
       try {
-        const res = await fetch("/api/invoices/" + id + "/toggle", { method: "POST" });
-        if (!res.ok) throw new Error("Server returned " + res.status);
+        invoiceStore.toggle(id);
         await fetchInvoices();
       } catch (err) {
         setStatus("Could not update invoice: " + err.message, "error");
@@ -271,8 +260,7 @@
     async function deleteInvoice(id) {
       setStatus("Deleting…", "info");
       try {
-        const res = await fetch("/api/invoices/" + id, { method: "DELETE" });
-        if (!res.ok) throw new Error("Server returned " + res.status);
+        invoiceStore.remove(id);
         setStatus("Invoice deleted.", "");
         await fetchInvoices();
       } catch (err) {
@@ -283,7 +271,7 @@
     // --- Mock camera OCR -------------------------------------------------
     // The scan is a demo: no real camera or OCR. It plays a fake scan,
     // then shows "extracted" sample data for the user to confirm or edit.
-    // Only the confirmed values are saved, through the same validated API.
+    // Only the confirmed values are saved, through the same validated browser storage.
     const scanBtn = document.getElementById("scan-btn");
     const scanView = document.getElementById("scan-view");
     const confirmView = document.getElementById("confirm-view");
@@ -344,16 +332,7 @@
       event.preventDefault();
       setStatus("Saving scanned invoice…", "info");
       try {
-        const res = await fetch("/api/invoices", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            client: ocrForm.client.value,
-            amount: ocrForm.amount.value,
-          }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || "Server returned " + res.status);
+        invoiceStore.add(ocrForm.client.value, ocrForm.amount.value);
         confirmView.hidden = true;
         scanView.hidden = true;
         setStatus("Scanned invoice added after confirmation.", "");
