@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Invoice Tracker</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; background: #e2e7ed; color: #222; min-height: 100dvh; display: grid; place-items: center; }
+    .phone-shell { position: relative; width: min(390px, calc(100vw - 32px)); height: min(820px, calc(100dvh - 40px)); box-sizing: border-box; border: 10px solid #20242b; border-radius: 46px; background: #f4f6f8; overflow: hidden; transform: translateZ(0); box-shadow: 0 24px 60px rgba(15,23,42,0.22); }
+    .phone-shell::before { content: ""; position: absolute; z-index: 200; top: 10px; left: 50%; transform: translateX(-50%); width: 100px; height: 24px; border-radius: 20px; background: #20242b; pointer-events: none; }
+    .phone-shell::after { content: ""; position: absolute; z-index: 200; bottom: 8px; left: 50%; transform: translateX(-50%); width: 110px; height: 4px; border-radius: 4px; background: #64748b; pointer-events: none; }
+    main { height: 100%; overflow-y: auto; box-sizing: border-box; padding: 44px 16px 28px; scrollbar-width: thin; }
+    #invoice-form { flex-direction: column; }
+    #invoice-form input { flex: none; min-width: 0; }
+    li { flex-wrap: wrap; }
+    h1 { font-size: 1.5rem; }
+    .card { background: #fff; border-radius: 8px; padding: 1rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 1rem; }
+    form { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+    input { flex: 1 1 140px; padding: 0.5rem; border: 1px solid #ccc; border-radius: 6px; font-size: 1rem; }
+    button { padding: 0.5rem 1rem; border: 0; border-radius: 6px; background: #2563eb; color: #fff; font-size: 1rem; cursor: pointer; }
+    button:disabled { background: #93b4f5; cursor: wait; }
+    ul { list-style: none; padding: 0; margin: 0; }
+    li { display: flex; align-items: center; gap: 0.75rem; padding: 0.6rem 0; border-bottom: 1px solid #eee; }
+    li:last-child { border-bottom: 0; }
+    .client { flex: 1; }
+    .paid .client { text-decoration: line-through; color: #888; }
+    .amount { font-variant-numeric: tabular-nums; }
+    .badge { font-size: 0.75rem; padding: 0.15rem 0.5rem; border-radius: 999px; }
+    .badge.unpaid { background: #fee2e2; color: #b91c1c; }
+    .badge.paid { background: #dcfce7; color: #15803d; }
+    .toggle { background: #64748b; font-size: 0.8rem; padding: 0.3rem 0.6rem; }
+    .total { font-weight: bold; }
+    #status { min-height: 1.2rem; font-size: 0.9rem; }
+    #status.error, #scan-status.error { color: #b91c1c; }
+    #status.info, #scan-status.info { color: #555; }
+    #scan-view {
+      position: fixed; inset: 0; z-index: 100;
+      background: #111827; color: #f1f5f9;
+      display: flex; flex-direction: column;
+      padding: 44px 1rem 1.5rem;
+    }
+    #scan-view[hidden] { display: none; }
+    .scan-bar {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0.8rem 0;
+    }
+    .scan-bar button {
+      background: rgba(255,255,255,0.15);
+    }
+    .camera {
+      position: relative; flex: 1; overflow: hidden;
+      background: #1e293b; border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      margin-bottom: 1rem;
+    }
+    .camera.shake { animation: shake 0.6s infinite; }
+    .doc {
+      background: #fff; color: #253041; padding: 14px;
+      width: 88%; aspect-ratio: 210 / 297; box-sizing: border-box;
+      font-family: Arial, sans-serif; text-align: left; font-size: 5px;
+      line-height: 1.3; box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+      display: flex; flex-direction: column;
+    }
+    .doc h2 { font-size: 16px; letter-spacing: 2px; margin: 0 0 6px; }
+    .doc h3 { font-size: 7px; margin: 8px 0 3px; }
+    .doc p { margin: 3px 0; }
+    .doc table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: inherit; }
+    .doc th, .doc td { padding: 2px; border-bottom: 1px solid #e2e7ed; text-align: left; }
+    .doc th:last-child, .doc td:last-child { text-align: right; }
+    .doc footer { margin-top: auto; padding-top: 10px; border-top: 1px solid #e2e7ed; }
+    .scanline {
+      position: absolute; left: 0; right: 0; top: 0; height: 3px;
+      background: #22c55e; box-shadow: 0 0 8px #22c55e; display: none;
+    }
+    .scanline.active { display: block; animation: sweep 1.6s linear infinite; }
+    @keyframes shake {
+      0%, 100% { transform: translate(1px, 1px); }
+      50% { transform: translate(-1px, -1px); }
+    }
+    @keyframes sweep {
+      0% { top: 0; } 100% { top: calc(100% - 3px); }
+    }
+    #scan-status { margin: 0; }
+    #confirm-view label { display: block; margin-bottom: 0.6rem; font-size: 0.9rem; }
+    #confirm-view input { width: 100%; margin-top: 0.25rem; box-sizing: border-box; }
+    .hint { font-size: 0.85rem; color: #555; margin-top: 0; }
+  </style>
+</head>
+<body>
+  <div class="phone-shell">
+  <main>
+    <h1>Invoice Tracker</h1>
+
+    <div class="card">
+      <form id="invoice-form">
+        <input id="client" name="client" placeholder="Client name" aria-label="Client name" required />
+        <input id="amount" name="amount" type="number" step="0.01" min="0.01" placeholder="Amount" aria-label="Amount" required />
+        <button type="submit">Add invoice</button>
+        <button type="button" id="scan-btn">📷 Scan invoice</button>
+      </form>
+    </div>
+
+    <p id="status" role="status" aria-live="polite"></p>
+
+    <div id="scan-view" hidden>
+      <div class="scan-bar">
+        <span>Invoice Scanner</span>
+        <button type="button" id="scan-close">✕ Close</button>
+      </div>
+      <div id="camera-stage" class="camera">
+        <div class="doc" aria-label="Sample invoice on an A4 sheet">
+          <h2>INVOICE</h2>
+          <p><strong>ACME Ltd</strong><br>Business services and office supplies<br>18 Commerce Avenue, Kuala Lumpur, Malaysia<br>accounts@example.com | Reference: INV-2026-0118</p>
+          <h3>BILL TO</h3>
+          <p>ACME Ltd<br>Finance and Administration Department<br>Invoice date: 22 November 2026<br>Payment due: 22 December 2026 | Currency: MYR</p>
+          <table>
+            <thead><tr><th>Description</th><th>Qty</th><th>Rate</th><th>Amount</th></tr></thead>
+            <tbody>
+              <tr><td>Document preparation and formatting</td><td>2</td><td>25.00</td><td>50.00</td></tr>
+              <tr><td>Monthly administrative support</td><td>1</td><td>80.00</td><td>80.00</td></tr>
+              <tr><td>Office stationery assortment</td><td>4</td><td>10.00</td><td>40.00</td></tr>
+              <tr><td>Printing and binding services</td><td>5</td><td>8.00</td><td>40.00</td></tr>
+              <tr><td>Records organisation</td><td>2</td><td>30.00</td><td>60.00</td></tr>
+              <tr><td>Spreadsheet preparation</td><td>1</td><td>45.00</td><td>45.00</td></tr>
+              <tr><td>Inventory documentation</td><td>1</td><td>35.00</td><td>35.00</td></tr>
+              <tr><td>Delivery and handling</td><td>1</td><td>20.00</td><td>20.00</td></tr>
+              <tr><td>Project coordination</td><td>2</td><td>40.00</td><td>80.00</td></tr>
+              <tr><td>Report compilation</td><td>1</td><td>50.00</td><td>50.00</td></tr>
+            </tbody>
+            <tfoot><tr><th colspan="3">TOTAL DUE (MYR)</th><th>500.00</th></tr></tfoot>
+          </table>
+          <h3>PAYMENT REFERENCE</h3>
+          <p>Please quote INV-2026-0118 in all correspondence. Send payment confirmation to the accounts contact above so the payment can be matched to this invoice.</p>
+          <h3>TERMS AND NOTES</h3>
+          <p>Payment is requested within 30 days of the invoice date. Please review the quantities, descriptions and amounts and contact the accounts department regarding any discrepancies.</p>
+          <p>Retain a copy of this document with the corresponding purchase order and delivery records. Any agreed adjustments should be recorded separately with a reference to this invoice.</p>
+          <footer>Thank you for your business.<br>INV-2026-0118 | Page 1 of 1</footer>
+        </div>
+        <div class="scanline"></div>
+      </div>
+      <p id="scan-status" role="status" aria-live="polite">Starting camera…</p>
+    </div>
+
+    <div class="card" id="confirm-view" hidden>
+      <h2>Confirm scanned details</h2>
+      <p class="hint">Check the text below — OCR can misread letters. Edit anything wrong before saving.</p>
+      <form id="ocr-form">
+        <label>Client name
+          <input id="ocr-client" name="client" required />
+        </label>
+        <label>Amount
+          <input id="ocr-amount" name="amount" type="number" step="0.01" min="0.01" required />
+        </label>
+        <button type="submit">Confirm &amp; add</button>
+        <button type="button" id="ocr-cancel">Cancel</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <ul id="invoice-list"></ul>
+      <p class="total" id="total-owed" aria-label="Total unpaid"></p>
+    </div>
+  </main>
+  </div>
+
+  <script>
+    const list = document.getElementById("invoice-list");
+    const totalEl = document.getElementById("total-owed");
+    const statusEl = document.getElementById("status");
+    const form = document.getElementById("invoice-form");
+
+    function setStatus(message, kind) {
+      statusEl.textContent = message;
+      statusEl.className = kind || "";
+    }
+
+    async function fetchInvoices() {
+      setStatus("Loading invoices…", "info");
+      try {
+        const res = await fetch("/api/invoices");
+        if (!res.ok) throw new Error("Server returned " + res.status);
+        render(await res.json());
+        setStatus("");
+      } catch (err) {
+        render([]);
+        setStatus("Could not load invoices: " + err.message, "error");
+      }
+    }
+
+    function render(invoices) {
+      list.innerHTML = "";
+      if (invoices.length === 0) {
+        const empty = document.createElement("li");
+        empty.textContent = "No invoices yet — add your first one above.";
+        list.appendChild(empty);
+        totalEl.textContent = "";
+        return;
+      }
+      for (const inv of invoices) {
+        const li = document.createElement("li");
+        li.className = inv.paid ? "paid" : "";
+
+        const name = document.createElement("span");
+        name.className = "client";
+        name.textContent = inv.client;
+
+        const amount = document.createElement("span");
+        amount.className = "amount";
+        amount.textContent = Number(inv.amount).toFixed(2);
+
+        const badge = document.createElement("span");
+        badge.className = "badge " + (inv.paid ? "paid" : "unpaid");
+        badge.textContent = inv.paid ? "Paid" : "Unpaid";
+
+        const toggle = document.createElement("button");
+        toggle.className = "toggle";
+        toggle.textContent = inv.paid ? "Mark unpaid" : "Mark paid";
+        toggle.setAttribute("aria-label", "Toggle payment for " + inv.client);
+        toggle.addEventListener("click", () => togglePaid(inv.id));
+
+        const del = document.createElement("button");
+        del.className = "toggle";
+        del.textContent = "Delete";
+        del.setAttribute("aria-label", "Delete invoice for " + inv.client);
+        del.addEventListener("click", () => deleteInvoice(inv.id));
+
+        li.append(name, amount, badge, toggle, del);
+        list.appendChild(li);
+      }
+      const owed = invoices.filter((i) => !i.paid).reduce((s, i) => s + Number(i.amount), 0);
+      totalEl.textContent = "Total unpaid: " + owed.toFixed(2);
+    }
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const button = form.querySelector("button");
+      button.disabled = true;
+      setStatus("Saving…", "info");
+      try {
+        const res = await fetch("/api/invoices", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            client: form.client.value,
+            amount: form.amount.value,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Server returned " + res.status);
+        form.reset();
+        setStatus("Invoice added.", "");
+        await fetchInvoices();
+      } catch (err) {
+        setStatus("Could not add invoice: " + err.message, "error");
+      } finally {
+        button.disabled = false;
+      }
+    });
+
+    async function togglePaid(id) {
+      setStatus("Updating…", "info");
+      try {
+        const res = await fetch("/api/invoices/" + id + "/toggle", { method: "POST" });
+        if (!res.ok) throw new Error("Server returned " + res.status);
+        await fetchInvoices();
+      } catch (err) {
+        setStatus("Could not update invoice: " + err.message, "error");
+      }
+    }
+
+    async function deleteInvoice(id) {
+      setStatus("Deleting…", "info");
+      try {
+        const res = await fetch("/api/invoices/" + id, { method: "DELETE" });
+        if (!res.ok) throw new Error("Server returned " + res.status);
+        setStatus("Invoice deleted.", "");
+        await fetchInvoices();
+      } catch (err) {
+        setStatus("Could not delete invoice: " + err.message, "error");
+      }
+    }
+
+    // --- Mock camera OCR -------------------------------------------------
+    // The scan is a demo: no real camera or OCR. It plays a fake scan,
+    // then shows "extracted" sample data for the user to confirm or edit.
+    // Only the confirmed values are saved, through the same validated API.
+    const scanBtn = document.getElementById("scan-btn");
+    const scanView = document.getElementById("scan-view");
+    const confirmView = document.getElementById("confirm-view");
+    const cameraStage = document.getElementById("camera-stage");
+    const scanline = cameraStage.querySelector(".scanline");
+    const scanStatus = document.getElementById("scan-status");
+    const ocrForm = document.getElementById("ocr-form");
+    let scanTimers = [];
+
+    scanBtn.addEventListener("click", () => {
+      scanView.hidden = false;
+      confirmView.hidden = true;
+      cameraStage.classList.add("shake");
+      scanline.classList.remove("active");
+      scanStatus.textContent = "Starting camera…";
+      scanStatus.className = "info";
+
+      scanTimers.push(setTimeout(() => {
+        scanStatus.textContent = "Focusing… hold still.";
+      }, 800));
+      scanTimers.push(setTimeout(() => {
+        scanStatus.textContent = "Scanning document…";
+        scanline.classList.add("active");
+      }, 1600));
+      scanTimers.push(setTimeout(() => {
+        cameraStage.classList.remove("shake");
+        scanline.classList.remove("active");
+        scanStatus.textContent = "Scan complete.";
+        scanTimers.forEach(clearTimeout);
+        scanTimers = [];
+        showOcrConfirm({ client: "ACME Ltd", amount: "500.00" });
+      }, 4200));
+    });
+
+    function closeScan() {
+      scanTimers.forEach(clearTimeout);
+      scanTimers = [];
+      cameraStage.classList.remove("shake");
+      scanline.classList.remove("active");
+      scanView.hidden = true;
+    }
+
+    document.getElementById("scan-close").addEventListener("click", closeScan);
+
+    function showOcrConfirm(extracted) {
+      closeScan();
+      ocrForm.client.value = extracted.client;
+      ocrForm.amount.value = extracted.amount;
+      confirmView.hidden = false;
+      confirmView.scrollIntoView({ behavior: "smooth" });
+    }
+
+    document.getElementById("ocr-cancel").addEventListener("click", () => {
+      confirmView.hidden = true;
+    });
+
+    ocrForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      setStatus("Saving scanned invoice…", "info");
+      try {
+        const res = await fetch("/api/invoices", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            client: ocrForm.client.value,
+            amount: ocrForm.amount.value,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Server returned " + res.status);
+        confirmView.hidden = true;
+        scanView.hidden = true;
+        setStatus("Scanned invoice added after confirmation.", "");
+        await fetchInvoices();
+      } catch (err) {
+        setStatus("Could not add scanned invoice: " + err.message, "error");
+      }
+    });
+
+    fetchInvoices();
+  </script>
+</body>
+</html>
